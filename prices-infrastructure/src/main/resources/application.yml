@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: prices-service
+  datasource:
+    url: jdbc:h2:mem:prices;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  web:
+    resources:
+      static-locations: classpath:/static/,classpath:/openapi/
+
+springdoc:
+  swagger-ui:
+    url: /prices-api.yaml
