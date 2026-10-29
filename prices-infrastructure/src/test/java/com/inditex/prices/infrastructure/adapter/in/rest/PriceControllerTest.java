@@ -1,9 +1,8 @@
 package com.inditex.prices.infrastructure.adapter.in.rest;
 
-import com.inditex.prices.application.port.in.GetApplicablePriceUseCase;
 import com.inditex.prices.domain.exception.PriceNotFoundException;
 import com.inditex.prices.domain.model.Price;
-import com.inditex.prices.infrastructure.adapter.mapper.PriceMapperImpl;
+import com.inditex.prices.domain.port.in.GetApplicablePriceUseCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -22,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PriceController.class)
-@Import(PriceMapperImpl.class)
+@Import(PriceResponseMapperImpl.class)
 class PriceControllerTest {
 
     private static final LocalDateTime APPLICATION_DATE = LocalDateTime.of(2020, 6, 14, 16, 0);

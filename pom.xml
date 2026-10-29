@@ -23,6 +23,7 @@
         <module>prices-application</module>
         <module>prices-api</module>
         <module>prices-infrastructure</module>
+        <module>prices-boot</module>
         <module>prices-e2e</module>
     </modules>
 
@@ -57,6 +58,11 @@
             <dependency>
                 <groupId>com.inditex</groupId>
                 <artifactId>prices-infrastructure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.inditex</groupId>
+                <artifactId>prices-boot</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

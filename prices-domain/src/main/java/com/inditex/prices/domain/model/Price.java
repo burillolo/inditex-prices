@@ -12,8 +12,4 @@ public record Price(
         Integer priority,
         BigDecimal amount,
         String currency) {
-
-    public boolean hasPrecedenceOver(Price other) {
-        return priority > other.priority;
-    }
 }

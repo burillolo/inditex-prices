@@ -56,10 +56,9 @@ sequenceDiagram
     participant A as PriceRepositoryAdapter
     C->>R: GET /prices?applicationDate&productId&brandId
     R->>U: getApplicablePrice(brandId, productId, date)
-    U->>P: findValidAt(brandId, productId, date)
-    P->>A: (JPA query on PRICES)
-    A-->>U: candidate prices
-    U->>U: keep the one with precedence (highest priority)
+    U->>P: findApplicable(brandId, productId, date)
+    P->>A: (JPA query on PRICES, highest priority first, one row)
+    A-->>U: Optional<Price>
     U-->>R: Price or PriceNotFoundException
     R-->>C: 200 PriceResponse / 404 ProblemDetail
 ```

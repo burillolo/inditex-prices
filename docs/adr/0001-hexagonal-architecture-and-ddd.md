@@ -16,21 +16,24 @@ Boundaries are enforced by Maven modules, so a forbidden dependency is a compila
 
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `prices-domain` | Ubiquitous language: `Price` aggregate, precedence rule, `PriceRepository` output port, `PriceNotFoundException` | nothing (plain Java) |
-| `prices-application` | Use case `GetApplicablePriceUseCase` (input port) and its orchestration service | domain |
+| `prices-domain` | Ubiquitous language: `Price` model, `PriceNotFoundException`, input port `GetApplicablePriceUseCase` and output port `PriceRepository` | nothing (plain Java) |
+| `prices-application` | Use case implementation `GetApplicablePriceUseCaseImpl` | domain |
 | `prices-api` | OpenAPI contract and the interface/DTOs generated from it (see ADR-0002) | Spring Web annotations only |
-| `prices-infrastructure` | REST input adapter, JPA output adapter, Spring Boot bootstrap and wiring | application, api |
-| `prices-e2e` | Cucumber end-to-end acceptance tests and aggregated coverage (see ADR-0005) | domain, application, infrastructure |
+| `prices-infrastructure` | REST input adapter and JPA output adapter | domain, api |
+| `prices-boot` | Spring Boot entry point (`PricesApplication`), wiring (`UseCaseConfiguration`), runtime configuration; builds the executable jar | domain, application, infrastructure |
+| `prices-e2e` | Cucumber end-to-end acceptance tests and aggregated coverage (see ADR-0005) | domain, application, infrastructure, boot |
 
 ```mermaid
 flowchart LR
     client([HTTP client]) --> rest
 
     subgraph infrastructure[prices-infrastructure]
-        rest[PriceController<br/>RestExceptionHandler]
-        jpa[PriceRepositoryAdapter<br/>SpringDataPriceRepository<br/>PriceEntity]
-        mapper[PriceMapper]
-        config[UseCaseConfiguration<br/>PricesApplication]
+        rest[PriceController<br/>RestExceptionHandler<br/>PriceResponseMapper]
+        jpa[PriceRepositoryAdapter<br/>SpringDataPriceRepository<br/>PriceEntity<br/>PriceEntityMapper]
+    end
+
+    subgraph boot[prices-boot]
+        config[PricesApplication<br/>UseCaseConfiguration]
     end
 
     subgraph api[prices-api]
@@ -38,12 +41,12 @@ flowchart LR
     end
 
     subgraph application[prices-application]
-        port_in[/GetApplicablePriceUseCase/]
-        service[GetApplicablePriceService]
+        service[GetApplicablePriceUseCaseImpl]
     end
 
     subgraph domain[prices-domain]
         price[Price]
+        port_in[/GetApplicablePriceUseCase/]
         port_out[/PriceRepository/]
         ex[PriceNotFoundException]
     end
@@ -54,34 +57,58 @@ flowchart LR
     service --> port_out
     service --> price
     jpa -- implements --> port_out
-    rest --> mapper
-    jpa --> mapper
+    config -- wires --> service
     jpa --> h2[(H2 PRICES)]
 ```
 
 ```mermaid
 flowchart BT
-    e2e[prices-e2e] --> infrastructure[prices-infrastructure]
-    infrastructure --> application[prices-application]
+    e2e[prices-e2e] --> boot[prices-boot]
+    boot --> infrastructure[prices-infrastructure]
+    boot --> application[prices-application]
+    boot --> domain[prices-domain]
+    infrastructure --> domain
     infrastructure --> api[prices-api]
-    application --> domain[prices-domain]
+    application --> domain
 ```
 
 ### Domain modelling
 
 - `Price` is a Java record holding brand, product, price list (tarifa), validity range, priority, amount and currency.
-- The disambiguation rule ("when ranges overlap the highest priority wins") is a business rule, so it lives in the domain as `Price#hasPrecedenceOver`.
-  The output port only returns the candidates valid at the requested date, and the use case applies the domain rule.
+- The domain owns both ports: `GetApplicablePriceUseCase` (input) states what the hexagon offers and `PriceRepository` (output) what it needs.
+  The application layer only contains use case implementations, so adapters never depend on it to know a contract.
+- The disambiguation rule ("when ranges overlap the highest priority wins") is part of the output port contract:
+  `PriceRepository#findApplicable` returns the single applicable price. The JPA adapter fulfils it in the database (ADR-0003), so only one
+  row travels instead of every candidate being loaded and filtered in memory.
+- The use case implementation is named after the port it implements (`GetApplicablePriceUseCaseImpl`) instead of the generic `Service` suffix.
 - Brand and product identifiers stay as `Long`; wrapping them in value objects would add code without adding behaviour.
 
 ### Framework independence
 
-Domain and application have no Spring dependency. The use case is exposed as a bean by `UseCaseConfiguration` in the infrastructure module,
-which is the only place that knows about the framework.
+Domain and application have no Spring dependency. The use case is exposed as a bean by `UseCaseConfiguration`.
+
+Adapters only talk to the hexagon through the ports defined in the domain, so `prices-infrastructure` depends directly on `prices-domain` and
+not on `prices-application`: adapters cannot reach use case implementations, only their contracts.
+
+Bootstrapping and wiring live in their own module, `prices-boot`, the composition root. It is the only module that knows every other one:
+it starts Spring Boot, instantiates `GetApplicablePriceUseCaseImpl` with the `PriceRepository` adapter, holds the runtime configuration
+(`application.yml`) and packages the executable jar used by Docker. Infrastructure tests bootstrap their Spring slices with a test-only
+`@SpringBootApplication`, so the adapter module does not need the real entry point.
+
+### Mappers
+
+Each adapter owns its translation, with a single responsibility, generated by MapStruct at compile time:
+
+| Mapper | Adapter | Conversion |
+|---|---|---|
+| `PriceResponseMapper` | REST (input) | domain `Price` to API `PriceResponse` |
+| `PriceEntityMapper` | persistence (output) | `PriceEntity` to domain `Price` |
 
 ## Consequences
 
 - Business logic is unit tested without Spring context, fast and isolated.
 - Swapping H2/JPA or the REST layer only touches `prices-infrastructure`.
-- Five modules add some build configuration compared to a single module; this is accepted to make the hexagon explicit and compiler-enforced.
+- Six modules add some build configuration compared to a single module; this is accepted to make the hexagon explicit and compiler-enforced.
 - Rest and persistence adapters share one module because each holds only a few classes; splitting them further would not pay off.
+- A dedicated composition root keeps adapters decoupled from use case implementations; replacing the wiring or the runtime configuration does
+  not touch adapters.

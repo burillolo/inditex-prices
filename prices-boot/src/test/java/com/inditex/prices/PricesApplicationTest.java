@@ -1,6 +1,6 @@
 package com.inditex.prices;
 
-import com.inditex.prices.application.port.in.GetApplicablePriceUseCase;
+import com.inditex.prices.domain.port.in.GetApplicablePriceUseCase;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

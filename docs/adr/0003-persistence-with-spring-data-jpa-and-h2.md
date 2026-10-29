@@ -13,8 +13,18 @@ The statement requires an in-memory database (H2) initialised with the sample da
   so the schema is explicit and reviewable.
 - Spring Data JPA implements the output adapter (`PriceRepositoryAdapter` implements the domain `PriceRepository` port).
 - `PriceEntity` is a persistence model distinct from the domain `Price`, so JPA annotations never reach the domain. The conversion is done by
-  `PriceMapper`, a MapStruct interface whose implementation is generated at compile time: no hand-written mapping code and no reflection at runtime.
-- The query returns every price valid at the requested date (`START_DATE <= date <= END_DATE`); the precedence rule is applied in the domain (ADR-0001).
+  `PriceEntityMapper`, a MapStruct interface whose implementation is generated at compile time: no hand-written mapping code and no reflection at runtime.
+- The adapter fulfils the `PriceRepository#findApplicable` contract (ADR-0001) with a Spring Data derived query, so the database returns only the
+  applicable row instead of every candidate being filtered in memory:
+
+  ```java
+  Optional<PriceEntity> findFirstByBrandIdAndProductIdAndStartDateLessThanEqualAndEndDateGreaterThanEqualOrderByPriorityDesc(
+          Long brandId, Long productId, LocalDateTime startDate, LocalDateTime endDate);
+  ```
+
+  which Hibernate translates to `... where brand_id=? and product_id=? and start_date<=? and end_date>=? order by priority desc fetch first 1 rows only`.
+  The application date is passed as both range bounds. A derived query is preferred over JPQL because Spring Data validates it at startup and
+  it needs no query string.
 
 ```mermaid
 erDiagram

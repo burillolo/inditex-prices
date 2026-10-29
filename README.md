@@ -13,7 +13,7 @@ When several price lists overlap, the one with the highest priority wins.
 
 ```bash
 mvn clean install
-java -jar prices-infrastructure/target/prices-infrastructure-1.0.0-SNAPSHOT-exec.jar
+java -jar prices-boot/target/prices-boot-1.0.0-SNAPSHOT-exec.jar
 ```
 
 Or with Docker:
@@ -67,7 +67,7 @@ Runs every test of every module:
 
 | Type | Location | Tooling |
 |---|---|---|
-| Unit | `prices-domain`, `prices-application`, `prices-infrastructure` | JUnit 5, Mockito, AssertJ, `@WebMvcTest`, `@DataJpaTest` |
+| Unit | `prices-domain`, `prices-application`, `prices-infrastructure`, `prices-boot` | JUnit 5, Mockito, AssertJ, `@WebMvcTest`, `@DataJpaTest`, `@SpringBootTest` (wiring) |
 | End-to-end | `prices-e2e/src/test/resources/features/prices.feature` | Cucumber, RestAssured |
 
 The end-to-end suite covers the five requested scenarios (Test 1 to Test 5), prices not found and invalid requests.
@@ -91,26 +91,33 @@ Hexagonal architecture with a domain-driven design, split into Maven modules so 
 
 ```mermaid
 flowchart BT
-    e2e[prices-e2e] --> infrastructure[prices-infrastructure]
-    infrastructure --> application[prices-application]
+    e2e[prices-e2e] --> boot[prices-boot]
+    boot --> infrastructure[prices-infrastructure]
+    boot --> application[prices-application]
+    boot --> domain[prices-domain]
+    infrastructure --> domain
     infrastructure --> api[prices-api]
-    application --> domain[prices-domain]
+    application --> domain
 ```
 
 | Module | Content |
 |---|---|
-| `prices-domain` | `Price` model and its precedence rule, `PriceRepository` output port, `PriceNotFoundException`. Plain Java |
-| `prices-application` | `GetApplicablePriceUseCase` input port and `GetApplicablePriceService`. Plain Java |
+| `prices-domain` | `Price` model, `PriceNotFoundException`, `GetApplicablePriceUseCase` input port and `PriceRepository` output port. Plain Java |
+| `prices-application` | `GetApplicablePriceUseCaseImpl`, the use case implementation. Plain Java |
 | `prices-api` | OpenAPI contract; `PricesApi` interface and `PriceResponse` DTO are generated at build time |
-| `prices-infrastructure` | REST adapter (`PriceController`, `RestExceptionHandler`), JPA adapter (`PriceRepositoryAdapter`), `PriceMapper`, H2 schema/data, Spring Boot bootstrap |
+| `prices-infrastructure` | REST adapter (`PriceController`, `RestExceptionHandler`, `PriceResponseMapper`), JPA adapter (`PriceRepositoryAdapter`, `PriceEntityMapper`), H2 schema/data |
+| `prices-boot` | Composition root: `PricesApplication`, `UseCaseConfiguration`, `application.yml`; builds the executable jar |
 | `prices-e2e` | Cucumber end-to-end tests and aggregated coverage report |
 
 ### Notable decisions
 
-- The priority rule is business logic, so it lives in the domain (`Price#hasPrecedenceOver`). The repository returns every price valid at
-  the date and the use case keeps the one with precedence.
-- Domain and application have no framework dependency; the use case is wired as a bean in `UseCaseConfiguration`.
-- The JPA entity and the API DTO are separate from the domain model. `PriceMapper` (MapStruct, generated at compile time) converts entity to domain and domain to response. Schema and data are explicit SQL scripts (`schema.sql`, `data.sql`); `BRANDS` exists to keep
+- Both ports are defined in the domain; the application layer only holds the use case implementation.
+- The priority rule is part of the output port contract (`PriceRepository#findApplicable`). The JPA adapter resolves it in the database with
+  a derived `findFirstBy...OrderByPriorityDesc` query, so only the applicable row is read.
+- Domain and application have no framework dependency; the use case is wired as a bean in `UseCaseConfiguration`, inside the dedicated
+  `prices-boot` module. Adapters depend on the domain ports only, never on the application module.
+- The JPA entity and the API DTO are separate from the domain model. Each adapter has its own MapStruct mapper: `PriceEntityMapper`
+  (entity to domain) and `PriceResponseMapper` (domain to response). Schema and data are explicit SQL scripts (`schema.sql`, `data.sql`); `BRANDS` exists to keep
   `BRAND_ID` as a foreign key, as stated.
 - Prices are `DECIMAL`/`BigDecimal`; dates are local date-times (ISO-8601) because the source data has no time zone; range bounds are inclusive.
 - Swagger UI serves the contract YAML itself, so the documentation cannot drift from it.

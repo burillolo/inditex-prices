@@ -16,10 +16,11 @@ flowchart TB
         features[prices.feature<br/>5 statement scenarios + error scenarios]
     end
     subgraph unit[Unit tests: JUnit 5 + Mockito + AssertJ]
-        d[domain: Price precedence]
+        d[domain: Price, PriceNotFoundException]
         a[application: use case with mocked port]
         r[infrastructure: controller slice WebMvcTest, exception handler]
-        p[infrastructure: JPA adapter DataJpaTest over H2 seed data]
+        p[infrastructure: JPA adapter DataJpaTest over H2 seed data, priority resolution]
+        b[boot: SpringBootTest context wiring]
     end
     e2e --> app[(Running application on random port)]
 ```
